@@ -1,30 +1,28 @@
 ﻿open System.IO
 
-let origin = [|0;0;0|]
-
-let speedDelta x y = 
-        Array.map2(fun x y -> match y - x with | 0 -> 0 | d -> d/(abs d)) (fst x) (fst y)
+let speedDelta (x,_) (y,_) = 
+    Array.map2(fun x y -> match y - x with | 0 -> 0 | d -> d/(abs d)) x y
     
-let applySpeedDelta x =
-    (Array.map2(+) (fst x) (snd x), snd x)
+let applySpeedDelta (x,y) =
+    (Array.map2(+) x y, y)
 
 let computeSpeedDelta body x =
      x |> Array.map(fun x -> speedDelta body x) |> Array.reduce(fun a b -> Array.map2(+) a b)
 
 let computeSpeedDeltas x =
     x |> Array.map(fun p -> computeSpeedDelta p x) |> Array.map2(fun (_,x) y -> Array.map2(+) x y) x |>
-         Array.map2(fun x y -> (fst x, y)) x
+         Array.map2(fun (x,_) y -> (x, y)) x
+
+let tick = computeSpeedDeltas >> Array.map(applySpeedDelta)
 
 let energy x = 
-    x |> Array.sumBy(fun (x, y) -> (Array.sumBy(fun x -> abs x) x) * (Array.sumBy(fun y -> abs y) y))
+    x |> Array.sumBy(fun (x, y) -> Array.sumBy abs x * Array.sumBy abs y)
 
 let extractPos (x:string) =
-    (x.Split(',') |> Array.map(fun x -> x.Substring(x.IndexOf('=')+1) |> System.Int32.Parse), origin)
+    x.Split(',') |> Array.map(fun x -> x.Substring(x.IndexOf('=')+1) |> System.Int32.Parse)
 
 let removeTrailing (x:string) =
     x.Substring(0, x.LastIndexOf('>'))
-
-let tick = computeSpeedDeltas >> Array.map(applySpeedDelta)
 
 let rec simulate count d =
     match count > 0 with
@@ -45,11 +43,10 @@ let shouldGoOn x =
     | None -> false
     | _ -> true
 
-let findPeriod x =
-    let getPos = Array.map(fun (x,y) -> x)
+let findPeriod x zeros =
+    let getPos = Array.map(fun (x,_) -> x)
     let startPos = getPos x
-    let zeros = [|0;0;0|]
-    let mutable periods = [|0L;0L;0L|]
+    let mutable periods = zeros |> Array.map(fun x -> (int64)x) 
     let mutable data = x
     let mutable iter = 1L
     while shouldGoOn periods do
@@ -61,12 +58,13 @@ let findPeriod x =
                         | true -> periods.[i] <- iter
                         | _ -> ()
             | None -> ()
-    periods |> Seq.reduce(LCM)
+    periods |> Seq.reduce LCM
 
 [<EntryPoint>]
 let main argv =
-    let data = File.ReadAllLines(argv.[0]) |> Array.map removeTrailing |> Array.map extractPos
+    let posOnly = File.ReadAllLines(argv.[0]) |> Array.map removeTrailing |> Array.map extractPos
+    let origin = [|for i in 1 .. posOnly.[0].Length -> 0|]
+    let data = posOnly |> Array.map(fun x -> (x, origin))
     data |> simulate 1000 |> energy |> printfn "Part 1: %A" 
-    data |> findPeriod |> printfn "Part 2: %A"
-
+    findPeriod data origin |> printfn "Part 2: %A"
     0 // return an integer exit code
